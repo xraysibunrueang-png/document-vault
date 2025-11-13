@@ -24,7 +24,7 @@
     .btn{padding:10px 18px;border-radius:8px;border:none;cursor:pointer}
     .btn.green{background:#4CAF50;color:#fff}
     .btn.blue{background:#2196F3;color:#fff}
-    .status{margin-top:8px;font-size:13px;color:#333}
+    .status{margin-top:8px;font-size:13px;color:#333;white-space:pre-wrap}
   </style>
 </head>
 <body>
@@ -109,11 +109,12 @@
 
 <script>
 /*
-  CONFIG:
-  - Netlify Function จะอยู่ที่ '/.netlify/functions/save' (server-side proxy)
-  - PREVIEW_URL สำหรับปุ่มสรุป/พรีวิว (เปลี่ยนได้ตามต้องการ)
+  CONFIG
+  - SERVER_ENDPOINT: Netlify function (preferred, ป้องกัน CORS)
+  - GAS_FALLBACK: Google Apps Script web app URL (ใช้เป็นทางเลือกถ้า Netlify ไม่ทำงาน)
 */
 const SERVER_ENDPOINT = '/.netlify/functions/save';
+const GAS_FALLBACK = 'https://script.google.com/macros/s/AKfycbwZXumfZYODMcitUw7nxkBGJZ-lupphvGnWkACygpgB9qqDK5Bwycah0IgrYHuoQ_es/exec';
 const PREVIEW_URL = 'https://loquacious-trifle-78d307.netlify.app/index.html';
 
 // รายการสาเหตุ
@@ -281,21 +282,47 @@ function collectSummary(fromISO, toISO){
   };
 }
 
-// --- SERVER SAVE: send to Netlify function ---
+// --- SERVER SAVE: try Netlify function first, fallback to GAS ---
 async function saveToServer(record){
-  if(!SERVER_ENDPOINT) throw new Error('Server endpoint not configured.');
+  // helper for fetch + error text
+  async function doFetch(url, opts){
+    const resp = await fetch(url, opts);
+    const txt = await resp.text();
+    let body = txt;
+    try { body = JSON.parse(txt); } catch(e){ /* leave raw */ }
+    return { ok: resp.ok, status: resp.status, body, url };
+  }
 
-  const resp = await fetch(SERVER_ENDPOINT, {
+  const opts = {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
     body: JSON.stringify(record)
-  });
-  if(!resp.ok) {
-    const txt = await resp.text();
-    throw new Error('Server error: ' + resp.status + ' ' + txt);
+  };
+
+  // 1) Try Netlify function (server->server forwarding, preferred)
+  if (SERVER_ENDPOINT) {
+    try {
+      const r = await doFetch(SERVER_ENDPOINT, opts);
+      if (r.ok) return r.body;
+      // if not ok, include info and fallthrough to GAS fallback
+      console.warn('Netlify function returned not-ok', r);
+    } catch (err) {
+      console.warn('Netlify function fetch failed', err);
+    }
   }
-  const text = await resp.text();
-  try { return JSON.parse(text); } catch(e){ return { raw: text }; }
+
+  // 2) Fallback: call GAS directly (may hit CORS if GAS not configured for anonymous)
+  if (GAS_FALLBACK) {
+    try {
+      const r2 = await doFetch(GAS_FALLBACK, opts);
+      if (r2.ok) return r2.body;
+      throw new Error('GAS responded with status ' + r2.status + ': ' + JSON.stringify(r2.body));
+    } catch (err) {
+      throw new Error('Both Netlify and GAS calls failed: ' + (err.message || err));
+    }
+  }
+
+  throw new Error('No server endpoint configured');
 }
 
 // save handler (local + server attempt)
@@ -303,39 +330,28 @@ document.getElementById('btnSave').addEventListener('click', async (e)=>{
   e.preventDefault();
   statusEl.textContent = '';
   const rec = buildRecord();
-  // 1) local save
+
+  // 1) save local first
   saveLocal(rec);
 
-  // 2) attempt server save if SERVER_ENDPOINT set
-  if(SERVER_ENDPOINT){
-    try{
-      const btn = e.currentTarget;
-      btn.disabled = true;
-      btn.textContent = 'กำลังบันทึก...';
-      statusEl.textContent = 'กำลังส่งไปยังเซิร์ฟเวอร์...';
-      const res = await saveToServer(rec);
-      // success
-      statusEl.textContent = 'บันทึกสำเร็จที่เซิร์ฟเวอร์';
-      // if server returns fileUrl or rowId show it
-      if(res && (res.fileUrl || res.rowId || res.message)) {
-        const parts = [];
-        if(res.fileUrl) parts.push('file: ' + res.fileUrl);
-        if(res.rowId) parts.push('id: ' + res.rowId);
-        if(res.message) parts.push(res.message);
-        statusEl.textContent = 'บันทึกสำเร็จ — ' + parts.join(' | ');
-      }
-    }catch(err){
-      console.error('server save failed', err);
-      statusEl.textContent = 'บันทึกเครื่องกลางล้มเหลว: ' + err.message;
-      alert('บันทึกในเครื่องสำเร็จ แต่ไม่สามารถส่งไปยังเซิร์ฟเวอร์ได้: ' + err.message + '\n(ข้อมูลยังอยู่ในเครื่องของคุณ)');
-    }finally{
-      const btn = document.getElementById('btnSave');
-      btn.disabled = false;
-      btn.textContent = 'บันทึกข้อมูล (เครื่องกลาง)';
-    }
-  } else {
-    statusEl.textContent = 'บันทึกในเครื่องสำเร็จ (ไม่มี endpoint ตั้งค่า)';
-    alert('บันทึกในเครื่องเรียบร้อย — หากต้องการให้เก็บกลางได้จากเครื่องอื่น ให้ตั้งค่า Netlify Function หรือแก้ค่า SERVER_ENDPOINT');
+  // 2) attempt server save
+  try{
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    btn.textContent = 'กำลังบันทึก...';
+    statusEl.textContent = 'กำลังส่งไปยังเซิร์ฟเวอร์...';
+    const res = await saveToServer(rec);
+
+    // show helpful response info
+    statusEl.textContent = 'บันทึกสำเร็จที่เซิร์ฟเวอร์\n' + (typeof res === 'object' ? JSON.stringify(res) : String(res));
+  } catch(err){
+    console.error('server save failed', err);
+    statusEl.textContent = 'บันทึกเครื่องกลางล้มเหลว: ' + (err.message || err);
+    alert('บันทึกในเครื่องเรียบร้อย แต่ไม่สามารถส่งไปยังเซิร์ฟเวอร์ได้:\n' + (err.message || err) + '\n(ข้อมูลยังอยู่ในเครื่องของคุณ)');
+  } finally {
+    const btn = document.getElementById('btnSave');
+    btn.disabled = false;
+    btn.textContent = 'บันทึกข้อมูล (เครื่องกลาง)';
   }
 });
 
@@ -349,11 +365,11 @@ document.getElementById('btnOpenPreview').addEventListener('click', (e)=>{
   localStorage.setItem('repeatexam_summary', JSON.stringify(summary));
   const payload = encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify(summary)))));
   const url = `${PREVIEW_URL}?summary=${payload}`;
-  // open same tab to reduce popup issues on Netlify; change '_blank' if you prefer new tab
   window.open(url, '_self');
 });
 </script>
 </body>
 </html>
+
 
 
