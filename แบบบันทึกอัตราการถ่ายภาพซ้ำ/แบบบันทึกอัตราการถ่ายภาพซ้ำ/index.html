@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>บันทึกอัตราการถ่ายภาพซ้ำ</title>
+  <style>
+    body{font-family:"Sarabun","Tahoma",Arial,sans-serif;padding:20px;color:#111}
+    h1{font-size:20px;margin-bottom:4px}
+    .meta,.sign{margin-bottom:12px}
+    label{display:inline-block;min-width:120px}
+    table{width:100%;border-collapse:collapse;margin-top:8px}
+    table,th,td{border:1px solid #444}
+    th,td{padding:8px;text-align:left}
+    th{background:#eee}
+    .small{font-size:13px}
+    input[type="number"]{width:80px}
+    .center{text-align:center}
+    .muted{color:#666;font-size:13px}
+    textarea{width:100%;min-height:80px}
+    .signature{margin-top:28px}
+    .signature .box{border-top:1px dotted #333;width:320px;padding-top:6px}
+    .field{padding:6px;border:1px solid #ddd;background:#fff;border-radius:4px;min-width:220px}
+    .btn{padding:10px 18px;border-radius:8px;border:none;cursor:pointer}
+    .btn.green{background:#4CAF50;color:#fff}
+    .btn.blue{background:#2196F3;color:#fff}
+    .status{margin-top:8px;font-size:13px;color:#333}
+  </style>
+</head>
+<body>
+  <h1>แบบบันทึกอัตราการถ่ายภาพซ้ำ</h1>
+
+  <div class="meta">
+    <div><strong>ความถี่:</strong> ทุก 1 เดือน</div>
+
+    <div style="margin-top:6px">
+      <label for="recorderName">ผู้บันทึก:</label>
+      <input id="recorderName" class="field" value="นายพีรวิชญ์ อภิชาติสุขสันต์" />
+      &nbsp;&nbsp;&nbsp;
+      <label for="recorderPos">ตำแหน่ง:</label>
+      <input id="recorderPos" class="field" value="นักรังสีการแพทย์ปฏิบัติการ" />
+    </div>
+
+    <div style="margin-top:6px">
+      <label>ตั้งแต่วันที่</label>
+      <input type="date" id="dateFrom">
+      <label style="margin-left:8px">ถึง</label>
+      <input type="date" id="dateTo">
+    </div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width:6%">#</th>
+        <th>สาเหตุการปฏิเสธภาพ/การถ่ายซ้ำ</th>
+        <th style="width:18%">จำนวนครั้ง</th>
+        <th style="width:12%">เครื่องหมาย (ติ๊กเป็น 1)</th>
+      </tr>
+    </thead>
+    <tbody id="causeTable"></tbody>
+    <tfoot>
+      <tr>
+        <th colspan="2">รวม (จาก 9 รายการ)</th>
+        <th id="sumCount" class="center">0</th>
+        <th class="center">&nbsp;</th>
+      </tr>
+      <tr>
+        <th colspan="2">จำนวนภาพทั้งหมดที่ถ่าย</th>
+        <th colspan="2"><input type="number" id="totalImages" min="1" value="100"></th>
+      </tr>
+      <tr>
+        <th colspan="2">อัตราการถ่ายซ้ำ (%)</th>
+        <th colspan="2" id="repeatRate" class="center">0.00%</th>
+      </tr>
+    </tfoot>
+  </table>
+
+  <div style="margin-top:12px">
+    <label>ข้อเสนอแนะ:</label>
+    <textarea id="suggestions" placeholder="เขียนข้อเสนอแนะที่นี่"></textarea>
+  </div>
+
+  <div class="signature">
+    <div style="display:flex;gap:40px">
+      <div>
+        <div class="box">ลงชื่อ ผู้ทดสอบ</div>
+        <div style="margin-top:6px">(ผู้ทดสอบ)</div>
+      </div>
+      <div>
+        <div class="box">ผู้บันทึก: <span id="sigRecorder">นายพีรวิชญ์ อภิชาติสุขสันต์</span></div>
+        <div style="margin-top:6px">ตำแหน่ง: <span id="sigRecorderPos">นักรังสีการแพทย์ปฏิบัติการ</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:20px;text-align:center;">
+    <button id="btnSave" class="btn green" type="button">บันทึกข้อมูล (เครื่องกลาง)</button>
+    &nbsp;&nbsp;
+    <button id="btnOpenPreview" class="btn blue" type="button">ส่งข้อมูลเป็น PDF (สร้างสรุปช่วงเวลาที่เลือก)</button>
+
+    <div class="small muted" style="margin-top:10px">
+      บันทึกทั้งหมดในเครื่องนี้: <span id="logCount">0</span> รายการ
+      &nbsp;|&nbsp; <a href="#" id="clearLogs">ล้างข้อมูลทดสอบ</a>
+    </div>
+
+    <div id="status" class="status"></div>
+  </div>
+
+<script>
+/*
+  CONFIG:
+  - หาก deploy บน Netlify: Netlify function path จะถูกเลือกอัตโนมัติ (/.netlify/functions/save)
+  - หากไม่ได้อยู่บน Netlify ให้ใส่ GAS_URL เป็น URL ของ Google Apps Script web app (doPost)
+*/
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbytgXBGvLNHGsmTT9RBnuxblCkkNCmLq70LC8WlBEWN0codracce5iGxNlJmgHJGir3/exec'; // fallback
+const PREVIEW_URL = 'https://loquacious-trifle-78d307.netlify.app/index.html'; // เก็บของเดิม (ถ้าต้องการให้ preview ไปที่อื่น เปลี่ยนได้)
+
+// ถ้า hostname ลงท้ายด้วย netlify.app ให้ใช้ Netlify function path (same-origin)
+const isNetlifyHost = (typeof window !== 'undefined' && window.location && window.location.hostname && window.location.hostname.endsWith('netlify.app'));
+const SERVER_ENDPOINT = isNetlifyHost ? '/.netlify/functions/save' : (GAS_URL || '');
+
+// รายการสาเหตุ
+const causes = [
+  'การจัดท่าผู้ป่วย (Positioning)',
+  'ปรับมุมรังสีที่ไม่เหมาะสม (Exposure error)',
+  'ความผิดพลาดของกริด (Grid error)',
+  'ความผิดพลาดของระบบ (System error)',
+  'สิ่งแปลกปลอมในภาพ (Artifact)',
+  'การเคลื่อนไหวของผู้ป่วย (Patient motion)',
+  'การทดสอบภาพ (Test image)',
+  'ยกเลิกเคส (Study canceled)',
+  'อื่นๆ'
+];
+
+// สร้างแถวตาราง
+const tbody = document.getElementById('causeTable');
+causes.forEach((text, idx) => {
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td class="center">${idx+1}</td>
+    <td>${text}</td>
+    <td class="center"><input type="number" class="count" min="0" value="0" data-idx="${idx}" style="width:72px" /></td>
+    <td class="center"><input type="checkbox" class="tick" data-idx="${idx}" /></td>
+  `;
+  tbody.appendChild(tr);
+});
+
+// refs
+const counts = Array.from(document.querySelectorAll('.count'));
+const ticks  = Array.from(document.querySelectorAll('.tick'));
+const sumEl  = document.getElementById('sumCount');
+const totalImagesEl = document.getElementById('totalImages');
+const rateEl = document.getElementById('repeatRate');
+const suggestionsEl = document.getElementById('suggestions');
+const dateFrom = document.getElementById('dateFrom');
+const dateTo   = document.getElementById('dateTo');
+const logCountEl = document.getElementById('logCount');
+const clearLogsEl = document.getElementById('clearLogs');
+const statusEl = document.getElementById('status');
+
+const recorderNameEl = document.getElementById('recorderName');
+const recorderPosEl  = document.getElementById('recorderPos');
+const sigRecorder = document.getElementById('sigRecorder');
+const sigRecorderPos = document.getElementById('sigRecorderPos');
+
+// sync signature
+function syncSignature(){
+  sigRecorder.textContent = recorderNameEl.value || '-';
+  sigRecorderPos.textContent = recorderPosEl.value || '-';
+}
+recorderNameEl.addEventListener('input', syncSignature);
+recorderPosEl.addEventListener('input', syncSignature);
+syncSignature();
+
+// calc
+function recalc(){
+  let sum = 0;
+  counts.forEach((el,i)=>{
+    const val = Number(el.value) || 0;
+    sum += val;
+    ticks[i].checked = val >= 1;
+  });
+  sumEl.textContent = sum;
+  const total = Number(totalImagesEl.value) || 0;
+  const pct = total>0 ? (sum/total)*100 : 0;
+  rateEl.textContent = pct.toFixed(2) + '%';
+}
+counts.forEach(el => el.addEventListener('input', recalc));
+totalImagesEl.addEventListener('input', recalc);
+ticks.forEach((cb,i)=>cb.addEventListener('change',()=>{
+  const num = counts[i];
+  num.value = cb.checked ? Math.max(1, Number(num.value)||0) : 0;
+  recalc();
+}));
+
+// default dates (first of month -> today)
+const today = new Date();
+const first = new Date(today.getFullYear(), today.getMonth(), 1);
+function toISODate(d){
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  const dd = String(d.getDate()).padStart(2,'0');
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+dateFrom.value = toISODate(first);
+dateTo.value   = toISODate(today);
+recalc();
+
+// build record
+function buildRecord(){
+  const items = causes.map((c,i)=>({ cause:c, count:Number(counts[i].value)||0 }));
+  const iso = (dateTo.value && dateTo.value.trim()) ? dateTo.value.trim() : new Date().toISOString().slice(0,10);
+  return {
+    isoDate: iso,
+    dateFrom: dateFrom.value,
+    dateTo: dateTo.value,
+    items,
+    sum: Number(sumEl.textContent)||0,
+    totalImages: Number(totalImagesEl.value)||0,
+    suggestions: suggestionsEl.value || '',
+    recorder: recorderNameEl.value || '',
+    recorderPosition: recorderPosEl.value || '',
+    tester: 'นายพีรวิชญ์ อภิชาติสุขสันต์',
+    testerPosition: 'นักรังสีการแพทย์ปฏิบัติการ',
+    createdAt: new Date().toISOString()
+  };
+}
+
+// local save
+function saveLocal(rec){
+  const key = 'repeatexam_logs';
+  const logs = JSON.parse(localStorage.getItem(key) || '[]');
+  logs.push(rec);
+  localStorage.setItem(key, JSON.stringify(logs));
+  refreshLogCount();
+}
+
+// refresh log count
+function refreshLogCount(){
+  const logs = JSON.parse(localStorage.getItem('repeatexam_logs')||'[]');
+  logCountEl.textContent = logs.length;
+}
+refreshLogCount();
+clearLogsEl.addEventListener('click', (e)=>{
+  e.preventDefault();
+  localStorage.removeItem('repeatexam_logs');
+  refreshLogCount();
+  alert('ล้างข้อมูลเรียบร้อย');
+});
+
+// collect summary (overlap logic)
+function collectSummary(fromISO, toISO){
+  const key = 'repeatexam_logs';
+  const logs = JSON.parse(localStorage.getItem(key)||'[]');
+
+  const filtered = logs.filter(r=>{
+    const aStart = (r.dateFrom && r.dateFrom.trim()) || (r.isoDate || '');
+    const aEnd   = (r.dateTo && r.dateTo.trim()) || (r.isoDate || '');
+    const noOverlap = (aEnd < fromISO) || (aStart > toISO);
+    return !noOverlap;
+  });
+
+  const totals = Array(causes.length).fill(0);
+  let totalImagesSum = 0;
+  const sugg = [];
+  filtered.forEach(r=>{
+    (r.items||[]).forEach((it,i)=> totals[i] += Number(it.count)||0);
+    totalImagesSum += Number(r.totalImages)||0;
+    if(r.suggestions) sugg.push(r.suggestions);
+  });
+  const totalSum = totals.reduce((a,b)=>a+b,0);
+
+  // last recorder info as fallback
+  const last = filtered.length ? filtered[filtered.length-1] : { recorder:'', recorderPosition:'' };
+
+  return {
+    dateFrom: fromISO,
+    dateTo: toISO,
+    totals,
+    totalSum,
+    totalImagesSum,
+    suggestions: sugg.length ? ('- ' + sugg.join('\n- ')) : '',
+    recorder: last.recorder || recorderNameEl.value || '',
+    recorderPosition: last.recorderPosition || recorderPosEl.value || ''
+  };
+}
+
+// --- SERVER SAVE: send to SERVER_ENDPOINT (Netlify function or GAS fallback) ---
+async function saveToServer(record){
+  if(!SERVER_ENDPOINT) throw new Error('Server endpoint not configured.');
+
+  const url = SERVER_ENDPOINT; // either '/.netlify/functions/save' (same-origin) or a full GAS URL
+
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(record)
+  });
+  if(!resp.ok) {
+    const txt = await resp.text();
+    throw new Error('Server error: ' + resp.status + ' ' + txt);
+  }
+  const text = await resp.text();
+  try { return JSON.parse(text); } catch(e){ return { raw: text }; }
+}
+
+// save handler (local + server attempt)
+document.getElementById('btnSave').addEventListener('click', async (e)=>{
+  e.preventDefault();
+  statusEl.textContent = '';
+  const rec = buildRecord();
+  // 1) local save
+  saveLocal(rec);
+
+  // 2) attempt server save if SERVER_ENDPOINT set
+  if(SERVER_ENDPOINT){
+    try{
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      btn.textContent = 'กำลังบันทึก...';
+      statusEl.textContent = 'กำลังส่งไปยังเซิร์ฟเวอร์...';
+      const res = await saveToServer(rec);
+      // success
+      statusEl.textContent = 'บันทึกสำเร็จที่เซิร์ฟเวอร์';
+      // if server returns fileUrl or rowId show it
+      if(res && (res.fileUrl || res.rowId || res.message)) {
+        const parts = [];
+        if(res.fileUrl) parts.push('file: ' + res.fileUrl);
+        if(res.rowId) parts.push('id: ' + res.rowId);
+        if(res.message) parts.push(res.message);
+        statusEl.textContent = 'บันทึกสำเร็จ — ' + parts.join(' | ');
+      }
+    }catch(err){
+      console.error('server save failed', err);
+      statusEl.textContent = 'บันทึกเครื่องกลางล้มเหลว: ' + err.message;
+      alert('บันทึกในเครื่องสำเร็จ แต่ไม่สามารถส่งไปยังเซิร์ฟเวอร์ได้: ' + err.message + '\n(ข้อมูลยังอยู่ในเครื่องของคุณ)');
+    }finally{
+      const btn = document.getElementById('btnSave');
+      btn.disabled = false;
+      btn.textContent = 'บันทึกข้อมูล (เครื่องกลาง)';
+    }
+  } else {
+    statusEl.textContent = 'บันทึกในเครื่องสำเร็จ (ไม่มี endpoint ตั้งค่า)';
+    alert('บันทึกในเครื่องเรียบร้อย — หากต้องการให้เก็บกลางได้จากเครื่องอื่น ให้ตั้งค่า SERVER_ENDPOINT หรือ GAS_URL ในสคริปต์นี้เป็น URL ของ Google Apps Script Web App หรือ deploy Netlify Function');
+  }
+});
+
+// preview button
+document.getElementById('btnOpenPreview').addEventListener('click', (e)=>{
+  e.preventDefault();
+  const d1 = dateFrom.value;
+  const d2 = dateTo.value;
+  if(!d1 || !d2){ alert('โปรดเลือกช่วงวันที่'); return; }
+  const summary = collectSummary(d1, d2);
+  localStorage.setItem('repeatexam_summary', JSON.stringify(summary));
+  const payload = encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify(summary)))));
+  const url = `${PREVIEW_URL}?summary=${payload}`;
+  // open same tab to reduce popup issues on Netlify; change '_blank' if you prefer new tab
+  window.open(url, '_self');
+});
+</script>
+</body>
+</html>
