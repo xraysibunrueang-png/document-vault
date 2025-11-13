@@ -109,11 +109,11 @@
 
 <script>
 /*
-  ปรับแต่ง:
-  - ตั้งค่า GAS_URL ให้เป็น Web app URL ของคุณ ที่ deploy จาก Google Apps Script (see Code.gs example below)
-  - ถ้าไม่ต้องการใช้ server ให้เว้น GAS_URL = '' (จะยังบันทึก localStorage เท่านั้น)
+  CONFIG:
+  - Netlify Function จะอยู่ที่ '/.netlify/functions/save' (server-side proxy)
+  - PREVIEW_URL สำหรับปุ่มสรุป/พรีวิว (เปลี่ยนได้ตามต้องการ)
 */
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbytgXBGvLNHGsmTT9RBnuxblCkkNCmLq70LC8WlBEWN0codracce5iGxNlJmgHJGir3/exec'; // <-- วาง URL ของ Google Apps Script web app ที่ deploy แล้ว (Anyone, even anonymous) เช่น 'https://script.google.com/macros/s/xxxxx/exec'
+const SERVER_ENDPOINT = '/.netlify/functions/save';
 const PREVIEW_URL = 'https://loquacious-trifle-78d307.netlify.app/index.html';
 
 // รายการสาเหตุ
@@ -281,11 +281,11 @@ function collectSummary(fromISO, toISO){
   };
 }
 
-// --- SERVER SAVE: send to GAS (if GAS_URL configured) ---
+// --- SERVER SAVE: send to Netlify function ---
 async function saveToServer(record){
-  if(!GAS_URL) throw new Error('GAS_URL not configured.');
-  // We send JSON; Apps Script doPost can read e.postData.contents
-  const resp = await fetch(GAS_URL, {
+  if(!SERVER_ENDPOINT) throw new Error('Server endpoint not configured.');
+
+  const resp = await fetch(SERVER_ENDPOINT, {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
     body: JSON.stringify(record)
@@ -294,7 +294,6 @@ async function saveToServer(record){
     const txt = await resp.text();
     throw new Error('Server error: ' + resp.status + ' ' + txt);
   }
-  // parse JSON if available
   const text = await resp.text();
   try { return JSON.parse(text); } catch(e){ return { raw: text }; }
 }
@@ -307,8 +306,8 @@ document.getElementById('btnSave').addEventListener('click', async (e)=>{
   // 1) local save
   saveLocal(rec);
 
-  // 2) attempt server save if GAS_URL set
-  if(GAS_URL){
+  // 2) attempt server save if SERVER_ENDPOINT set
+  if(SERVER_ENDPOINT){
     try{
       const btn = e.currentTarget;
       btn.disabled = true;
@@ -335,8 +334,8 @@ document.getElementById('btnSave').addEventListener('click', async (e)=>{
       btn.textContent = 'บันทึกข้อมูล (เครื่องกลาง)';
     }
   } else {
-    statusEl.textContent = 'บันทึกในเครื่องสำเร็จ (GAS_URL ยังไม่ตั้งค่า)';
-    alert('บันทึกในเครื่องเรียบร้อย — หากต้องการให้เก็บกลางได้จากเครื่องอื่น ให้ตั้งค่า GAS_URL ในสคริปต์นี้เป็น URL ของ Google Apps Script Web App');
+    statusEl.textContent = 'บันทึกในเครื่องสำเร็จ (ไม่มี endpoint ตั้งค่า)';
+    alert('บันทึกในเครื่องเรียบร้อย — หากต้องการให้เก็บกลางได้จากเครื่องอื่น ให้ตั้งค่า Netlify Function หรือแก้ค่า SERVER_ENDPOINT');
   }
 });
 
@@ -356,3 +355,5 @@ document.getElementById('btnOpenPreview').addEventListener('click', (e)=>{
 </script>
 </body>
 </html>
+
+
